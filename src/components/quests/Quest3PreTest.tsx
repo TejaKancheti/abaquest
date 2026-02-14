@@ -6,7 +6,7 @@ import { useDataLogger } from '../DataLogger';
 
 
 interface Quest3PreTestProps {
-    onComplete: () => void;
+    onComplete: (score: number) => void;
     isPostTest?: boolean;
 }
 
@@ -14,6 +14,7 @@ export function Quest3PreTest({ onComplete, isPostTest = false }: Quest3PreTestP
     const [currentQuestion, setCurrentQuestion] = useState(0);
     const [showFeedback, setShowFeedback] = useState<'correct' | 'wrong' | 'skip' | null>(null);
     const [startTime, setStartTime] = useState(Date.now());
+    const [correctCount, setCorrectCount] = useState(0);
     const { logInteraction } = useDataLogger();
 
     const testQuestions = [
@@ -32,6 +33,10 @@ export function Quest3PreTest({ onComplete, isPostTest = false }: Quest3PreTestP
         const isCorrect = !isSkip && answer === currentQ.correctPosition;
         const timeSpent = Date.now() - startTime;
 
+        if (isCorrect) {
+            setCorrectCount(prev => prev + 1);
+        }
+
         logInteraction({
             quest_id: 3,
             scene_id: `${isPostTest ? 'posttest' : 'pretest'}_question_${currentQuestion + 1}`,
@@ -49,7 +54,13 @@ export function Quest3PreTest({ onComplete, isPostTest = false }: Quest3PreTestP
                 setCurrentQuestion(currentQuestion + 1);
                 setShowFeedback(null);
             } else {
-                onComplete();
+                // Calculate percentage score
+                const finalScore = isCorrect ? ((correctCount + 1) / testQuestions.length) * 100 : (correctCount / testQuestions.length) * 100;
+                // Note: state update for correctCount might not be reflected immediately if we use correctCount directly here,
+                // so we use the conditional logic or functional update if we were staying in component.
+                // Safest to just calculate based on current result.
+
+                onComplete(Math.round(finalScore));
             }
         }, 1500);
     };
