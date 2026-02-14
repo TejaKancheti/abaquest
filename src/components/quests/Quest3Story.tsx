@@ -1,158 +1,199 @@
+
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, ArrowRight } from 'lucide-react';
 import { useDataLogger } from '../DataLogger';
-import { InteractiveAbacus } from '../InteractiveAbacus';
 import { useAbacusSound } from '../../hooks/useAbacusSound';
-
-
-
+import { Button } from '../ui/button';
+import { InteractiveAbacus } from '../InteractiveAbacus';
 
 interface Quest3StoryProps {
     onComplete: () => void;
 }
 
 export function Quest3Story({ onComplete }: Quest3StoryProps) {
-    const [storyStep, setStoryStep] = useState(0);
-    const [showFeedback, setShowFeedback] = useState<'correct' | 'wrong' | null>(null);
+    const [sceneIndex, setSceneIndex] = useState(0);
+    const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
     const [startTime, setStartTime] = useState(Date.now());
-    const { logInteraction } = useDataLogger();
-    const { playSuccess } = useAbacusSound();
 
+    const { logInteraction } = useDataLogger();
+    const { playSuccess, playError } = useAbacusSound();
 
     useEffect(() => {
         setStartTime(Date.now());
-    }, [storyStep]);
+    }, [sceneIndex]);
 
     const storyScenes = [
         {
-            narrator: "In Mistress Creola's class, students are learning number positions...",
-            character: '👦',
-            characterName: 'Ameer',
-            problem: "Ameer tried to show the number 5 but used the wrong beads.",
-            question: "Help Ameer: Show the number 5 on the abacus.",
-            number: 5,
+            narrator: "Mistress Creola asks: 'Who can show me the number 9?'",
+            options: [
+                { id: 'A', value: 9, isCorrect: true, label: "Student A" },
+                { id: 'B', value: 4, isCorrect: false, label: "Student B" },
+            ],
+            correctMessage: "Correct! Student A has all beads touching the bar (5 + 4 = 9)."
         },
         {
-            narrator: "Ameerah is working on the number 1...",
-            character: '👧',
-            characterName: 'Ameerah',
-            problem: "Ameerah isn't sure if 1 uses the top bead or a lower bead.",
-            question: "Help Ameerah: Show the number 1 on the abacus.",
-            number: 1,
+            narrator: "Ameer tries to show the number 5. Is he correct?",
+            // Ameer shows 1 (lower bead) instead of 5 (upper bead).
+            options: [
+                { id: 'Yes', value: 5, isCorrect: false, label: "Yes, looks right" }, // Trick: label says yes, we need visual representation of error
+                // Actually, let's make it "Select the Correct Student"
+            ],
+            // Let's stick to "Select the correct student" pattern for simplicity first
+            isBinaryChoice: true,
+            question: "Does Ameer (showing 1 bead up) have 5?",
+            targetValue: 1, // Visual representation
+            correctAnswer: false // "No"
         },
+        {
+            narrator: "Final Challenge! Find the student showing ZERO.",
+            options: [
+                { id: 'A', value: 5, isCorrect: false, label: "Student A" },
+                { id: 'B', value: 0, isCorrect: true, label: "Student B" },
+                { id: 'C', value: 1, isCorrect: false, label: "Student C" },
+            ],
+            correctMessage: "That's right! Zero means NO beads are touching the bar."
+        }
     ];
 
+    // Refined Scenes for consistency
+    const refinedScenes = [
+        {
+            instruction: "Touch the student who is showing the number 9 Correctly.",
+            targetNumber: 9,
+            students: [
+                { id: 1, value: 9, correct: true },
+                { id: 2, value: 4, correct: false }, // 4 lower beads
+                { id: 3, value: 5, correct: false }  // Just 5 bead
+            ]
+        },
+        {
+            instruction: "Mistress Creola asks: 'Who knows the Number 5 position?'",
+            targetNumber: 5,
+            students: [
+                { id: 1, value: 1, correct: false }, // Common mistake: 1 lower bead
+                { id: 2, value: 5, correct: true },  // Correct: Top bead down (Maimuna)
+                { id: 3, value: 4, correct: false }, // 4 lower beads
+            ]
+        },
+        {
+            instruction: "Mistress Creola says: 'Find the student showing the number 1!'",
+            targetNumber: 1,
+            students: [
+                { id: 1, value: 5, correct: false }, // Top bead down
+                { id: 2, value: 1, correct: true },  // 1 lower bead up
+            ]
+        },
+        {
+            instruction: "Who is showing Zero (Empty)?",
+            targetNumber: 0,
+            students: [
+                { id: 1, value: 0, correct: true },
+                { id: 2, value: 9, correct: false },
+            ]
+        }
+    ];
 
-    const currentStory = storyScenes[storyStep];
+    const currentScene = refinedScenes[sceneIndex];
 
-    const handleAbacusChange = (value: number) => {
-        if (value === currentStory.number) {
-            // Debounce success slightly to let animation finish
+    const handleSelect = (student: typeof currentScene.students[0]) => {
+        if (feedback) return; // Prevent double clicks
+
+        const isCorrect = student.correct;
+        const timeSpent = Date.now() - startTime;
+
+        logInteraction({
+            quest_id: 3,
+            scene_id: `story_scene_${sceneIndex}`,
+            number: currentScene.targetNumber,
+            correct_flag: isCorrect,
+            interaction_type: 'story_selection',
+            student_response: student.value.toString(),
+            time_ms: timeSpent,
+        });
+
+        if (isCorrect) {
+            playSuccess();
+            setFeedback('correct');
             setTimeout(() => {
-                handleStorySuccess(value);
-            }, 500);
+                setFeedback(null);
+                if (sceneIndex < refinedScenes.length - 1) {
+                    setSceneIndex(prev => prev + 1);
+                } else {
+                    onComplete();
+                }
+            }, 2000);
+        } else {
+            playError();
+            setFeedback('wrong');
+            setTimeout(() => setFeedback(null), 1500);
         }
     };
 
-    const handleStorySuccess = (value: number) => {
-        const timeSpent = Date.now() - startTime;
-        logInteraction({
-            quest_id: 3,
-            scene_id: `story_scene_${storyStep + 1}`,
-            number: currentStory.number,
-            correct_flag: true,
-            time_ms: timeSpent,
-            interaction_type: 'story',
-            student_response: value.toString(),
-        });
-
-        playSuccess();
-        setShowFeedback('correct');
-
-        setTimeout(() => {
-
-            if (storyStep < storyScenes.length - 1) {
-                setStoryStep(storyStep + 1);
-                setShowFeedback(null);
-            } else {
-                onComplete();
-            }
-        }, 2500);
-    };
-
     return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="min-h-screen bg-brand-cream p-8"
-        >
-            <div className="max-w-4xl mx-auto">
-                <div className="bg-white rounded-2xl shadow-2xl p-8 border-4 border-brand-purple">
-                    <h2 className="text-brand-purple text-center mb-6 text-2xl font-bold">📖 Story Time with Mistress Creola</h2>
+        <div className="min-h-screen bg-brand-cream p-8">
+            <div className="max-w-5xl mx-auto bg-white rounded-3xl shadow-2xl p-8 border-4 border-brand-purple">
 
-                    <div className="bg-brand-purple/5 rounded-xl p-6 mb-6 border border-brand-purple/10">
-                        <p className="text-brand-text-muted text-lg mb-4">{currentStory.narrator}</p>
-
-                        <div className="flex items-center gap-4 mb-4 bg-white rounded-lg p-4 shadow-sm border border-brand-purple/10">
-                            <div className="text-5xl">{currentStory.character}</div>
-                            <div>
-                                <p className="text-brand-text font-bold">{currentStory.characterName}</p>
-                                <p className="text-brand-text-muted text-sm">{currentStory.problem}</p>
-                            </div>
-                        </div>
-
-                        <div className="bg-brand-teal/10 rounded-lg p-4 border-2 border-brand-teal">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="text-2xl">🐝</div>
-                                <p className="text-brand-teal font-bold">
-                                    <strong>Abby prompts you:</strong>
-                                </p>
-                            </div>
-                            <p className="text-brand-text text-lg">{currentStory.question}</p>
-                        </div>
+                {/* Story Header */}
+                <div className="text-center mb-10">
+                    <h2 className="text-3xl font-bold text-brand-purple mb-4">Making Numbers Come Alive!</h2>
+                    <div className="bg-brand-purple/10 inline-block px-6 py-3 rounded-full">
+                        <p className="text-xl text-brand-purple font-medium">{currentScene.instruction}</p>
                     </div>
+                </div>
 
-                    <div className="flex justify-center mb-8">
-                        <InteractiveAbacus
-                            key={storyStep} // Reset abacus for new question
-                            rods={1}
-                            onChange={handleAbacusChange}
-                        />
-                    </div>
+                {/* Students Grid */}
+                <div className="flex flex-wrap justify-center gap-12">
+                    {currentScene.students.map((student, idx) => (
+                        <motion.button
+                            key={student.id}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleSelect(student)}
+                            className="flex flex-col items-center gap-4 bg-gray-50 p-6 rounded-2xl border-2 border-transparent hover:border-brand-teal transition-all shadow-md hover:shadow-xl"
+                        >
+                            <div className="text-6xl mb-2">
+                                {['👧', '👦', '🧒', '👧🏽'][idx % 4]}
+                            </div>
 
+                            {/* Static abacus representation */}
+                            <div className="pointer-events-none transform scale-90">
+                                <InteractiveAbacus
+                                    initialValue={student.value}
+                                    interactive={false}
+                                />
+                            </div>
+                        </motion.button>
+                    ))}
+                </div>
 
-                    <AnimatePresence>
-                        {showFeedback && (
-                            <motion.div
-                                initial={{ scale: 0, y: 20 }}
-                                animate={{ scale: 1, y: 0 }}
-                                exit={{ scale: 0, y: 20 }}
-                                className={`p-4 rounded-xl flex items-center justify-center gap-3 ${showFeedback === 'correct'
-                                    ? 'bg-green-100 border-3 border-green-500'
-                                    : 'bg-orange-100 border-3 border-orange-400'
-                                    }`}
-                            >
-                                {showFeedback === 'correct' ? (
+                {/* Feedback Overlay */}
+                <AnimatePresence>
+                    {feedback && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 pointer-events-none"
+                        >
+                            <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center">
+                                {feedback === 'correct' ? (
                                     <>
-                                        <CheckCircle className="w-8 h-8 text-green-600" />
-                                        <span className="text-xl text-green-700">
-                                            Perfect! {currentStory.characterName} learned from you! 🎉
-                                        </span>
+                                        <CheckCircle className="w-24 h-24 text-green-500 mb-4" />
+                                        <h3 className="text-3xl font-bold text-green-600">Spot On!</h3>
                                     </>
                                 ) : (
                                     <>
-                                        <XCircle className="w-8 h-8 text-orange-600" />
-                                        <span className="text-xl text-orange-700">
-                                            Good try! {currentStory.characterName} will keep practicing! 💪
-                                        </span>
+                                        <XCircle className="w-24 h-24 text-red-500 mb-4" />
+                                        <h3 className="text-3xl font-bold text-red-600">Oops, try again!</h3>
                                     </>
                                 )}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
             </div>
-        </motion.div>
+        </div>
     );
 }
